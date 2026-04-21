@@ -4,8 +4,8 @@ version = '0.1.0'
 schema_version = 1
 description = 'SurrealQL language support'
 authors = ['Chiru B <chiru@foretag.co>']
-repository = 'https://github.com/ForetagInc/zed-surrealql'
+repository = 'https://github.com/surrealdb/surrealql-zed'
 
 [grammars.surrealql]
-repository = 'https://github.com/ForetagInc/tree-sitter-surrealql'
-commit = '00d0033a90471085d9f32625f9d6dc38e62905ef'
+repository = 'https://github.com/surrealdb/surrealql-tree-sitter'
+commit = '65185034978aa4c14a518f9624f9e2313af198ff'

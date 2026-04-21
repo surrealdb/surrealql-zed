@@ -36,6 +36,12 @@
 
 
 ; Functions
+(function_call
+  (custom_function_name) @function)
+
+(function_call
+  (function_name) @function)
+
 (custom_function_name) @function
 
 ((function_name) @function
@@ -43,10 +49,23 @@
 
 ; Built-ins: highlight distinctly from user-defined functions, including
 ; in incomplete/error states where function_call may not be formed yet.
+(function_call
+  (builtin_function_name) @function.builtin)
+
 (builtin_function_name) @constant.builtin
 
 ((function_name) @constant.builtin
-  (#match? @constant.builtin "^(array|crypto|duration|encoding|geo|http|math|meta|not|object|parse|rand|record|search|session|sleep|string|time|type|vector)::[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*)?$"))
+  (#match? @constant.builtin "^(api|array|bytes|crypto|duration|encoding|file|geo|http|math|meta|not|object|parse|rand|record|search|sequence|session|set|sleep|string|time|type|value|vector)::[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*)?$"))
+
+; Scripting functions (embedded JavaScript)
+(scripting_function
+  (keyword_function) @keyword.function)
+
+(scripting_function
+  (keyword_async) @keyword.coroutine)
+
+(scripting_function
+  (js_function_body) @embedded)
 
 ; Identifiers
 ((identifier) @keyword.control.conditional
@@ -297,7 +316,32 @@
   (keyword_replace)
   (keyword_reference)
   (keyword_computed)
+  (keyword_async)
+  (keyword_all)
+  (keyword_batch)
+  (keyword_end)
+  (keyword_expired)
+  (keyword_purge)
+  (keyword_revoke)
+  (keyword_revoked)
+  (keyword_sequence)
 ] @keyword
+
+; Access statement sub-keywords
+(access_statement
+  [
+    (keyword_grant)
+    (keyword_show)
+    (keyword_revoke)
+    (keyword_purge)
+  ] @keyword)
+
+; Sequence sub-keyword
+(define_sequence_statement
+  (keyword_sequence) @keyword)
+
+; Variables
+(variable_name) @variable.parameter
 
 ; Declarations
 (keyword_let) @keyword.storage
