@@ -21,9 +21,9 @@ Embedded JavaScript in scripting functions is highlighted as JavaScript:
 
 ```surql
 DEFINE FUNCTION fn::greet($name: string) {
-    return function() {
+    return function($name) {
         return `Hello, ${arguments[0]}!`;
-    }($name);
+    };
 };
 ```
 
