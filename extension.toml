@@ -3,9 +3,13 @@ name = 'SurrealQL from SurrealDB'
 version = '0.1.0'
 schema_version = 1
 description = 'SurrealQL language support'
-authors = ['Chiru B <chiru@foretag.co>']
+authors = ['SurrealDB <info@surrealdb.com>']
 repository = 'https://github.com/surrealdb/surrealql-zed'
 
 [grammars.surrealql]
 repository = 'https://github.com/surrealdb/surrealql-tree-sitter'
-commit = '65185034978aa4c14a518f9624f9e2313af198ff'
+commit = 'bf420b6dbe1f31da5d6609ce090d19d2a549f538'
+
+[language_servers.surrealql-lsp]
+name = "SurrealQL Language Server"
+languages = ["Surreal Query Language"]
