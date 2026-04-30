@@ -1,5 +1,5 @@
 id = 'surrealdb-surrealql'
-name = 'SurrealQL from SurrealDB'
+name = 'SurrealQL'
 version = '0.1.0'
 schema_version = 1
 description = 'SurrealQL language support'
@@ -11,5 +11,5 @@ repository = 'https://github.com/surrealdb/surrealql-tree-sitter'
 commit = 'bf420b6dbe1f31da5d6609ce090d19d2a549f538'
 
 [language_servers.surrealql-lsp]
-name = "SurrealQL Language Server"
-languages = ["Surreal Query Language"]
+name = 'SurrealQL Language Server'
+languages = ['Surreal Query Language']
