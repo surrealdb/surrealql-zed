@@ -1,6 +1,10 @@
-(comment) @comment
+(Comment) @comment
+(BlockComment) @comment.block
+
+(Comment) @comment.inclusive
 
 [
-    (string)
-    (prefixed_string)
+  (String)
+  (FormatString)
+  (Regex)
 ] @string

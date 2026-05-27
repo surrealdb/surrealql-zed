@@ -67,13 +67,19 @@ impl SurrealQLExtension {
 
         let (platform, arch) = zed::current_platform();
 
-        // Asset names must match exactly what the release CI uploads:
-        //   surreal-language-server-macos-arm64
-        //   surreal-language-server-linux-amd64
-        //   surreal-language-server-linux-arm64
-        //   surreal-language-server-windows-amd64.exe
+        // Asset names match the surrealql-language-server release CI uploads:
+        //   surrealql-language-server-macos-arm64
+        //   surrealql-language-server-linux-amd64
+        //   surrealql-language-server-linux-arm64
+        //   surrealql-language-server-windows-amd64.exe
+        //
+        // No native x86_64 macOS build is published; fall back to the arm64 binary
+        // (Rosetta 2 is required on Intel Macs).
         let asset_name = match (platform, arch) {
             (zed::Os::Mac, zed::Architecture::Aarch64) => {
+                format!("{BINARY_NAME}-macos-arm64")
+            }
+            (zed::Os::Mac, zed::Architecture::X8664) => {
                 format!("{BINARY_NAME}-macos-arm64")
             }
             (zed::Os::Linux, zed::Architecture::X8664) => {
