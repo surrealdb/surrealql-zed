@@ -11,8 +11,12 @@ This extension targets parity with [`@surrealdb/lezer`](https://github.com/surre
 - Line comments (`--`, `#`, `//`) and block comments (`/* */`)
 - Smart indentation inside `{}`, `[]`, and blocks
 - Syntax-aware folding for objects, arrays, sets, and blocks (when supported by your Zed version)
+- Document outline for `DEFINE` / `ALTER` / `REMOVE` schema statements
 - Embedded JavaScript highlighting inside scripting functions (`FunctionJs`)
+- Highlighting of `surql` / `surrealql` code blocks inside Markdown
+- Statement snippets (`select`, `create`, `define table`, `define function`, ...)
 - SurrealQL Language Server auto-download (`surrealql-language-server`)
+- Language server configuration (connection, auth context, inference mode, binary, version) via Zed `settings.json`
 
 ## Installation
 
@@ -45,6 +49,94 @@ Supported platforms:
 | Linux amd64 | `surrealql-language-server-linux-amd64` |
 | Linux arm64 | `surrealql-language-server-linux-arm64` |
 | Windows amd64 | `surrealql-language-server-windows-amd64.exe` |
+
+## Configuration
+
+The language server reads its configuration from Zed's `settings.json` under the
+`lsp.surrealql-lsp` key. These map onto the same `surrealql.*` options the VS Code
+and JetBrains extensions send to `surrealql-language-server`.
+
+### Connection, auth context, and inference mode
+
+Set startup options via `initialization_options`. The extension supplies sensible
+defaults (endpoint `http://localhost:8000`, `root`/`root`, auth context `root`,
+inference mode `both`); anything you set here is merged on top, leaf by leaf:
+
+```json
+{
+  "lsp": {
+    "surrealql-lsp": {
+      "initialization_options": {
+        "surrealql": {
+          "connection": {
+            "endpoint": "http://localhost:8000",
+            "namespace": "test",
+            "database": "test",
+            "username": "root",
+            "password": "root"
+          },
+          "activeAuthContext": "root",
+          "metadata": { "mode": "both" }
+        }
+      }
+    }
+  }
+}
+```
+
+- `activeAuthContext`: `root`, `namespace`, `database`, or `record`.
+- `metadata.mode`: `both` (workspace files + connected database), `workspace`, or `db`.
+
+### Binary path and version
+
+Override the binary or pin a release instead of using the auto-downloaded latest
+pre-release:
+
+```json
+{
+  "lsp": {
+    "surrealql-lsp": {
+      "binary": {
+        "path": "/absolute/path/to/surrealql-language-server",
+        "arguments": []
+      },
+      "settings": {
+        "version": "v0.1.0"
+      }
+    }
+  }
+}
+```
+
+- `binary.path` takes precedence over PATH detection and download.
+- `settings.version` pins a GitHub release tag; omit it or use `"latest"` for the
+  newest pre-release. When unset, a `surrealql-language-server` binary on your
+  `PATH` (e.g. from `cargo install`) is preferred.
+
+### Enabling, disabling, and ordering the language server
+
+```json
+{
+  "languages": {
+    "Surreal Query Language": {
+      "language_servers": ["surrealql-lsp"],
+      "tab_size": 4
+    }
+  }
+}
+```
+
+### Not available in Zed
+
+Some features of the VS Code and JetBrains extensions rely on editor APIs that Zed
+extensions do not expose, and are therefore intentionally omitted:
+
+- Run Query code lens and a query results panel
+- A connection status bar widget
+- Custom commands (restart server, open settings, clear results)
+- A dedicated settings UI page (use `settings.json` as shown above)
+- An "Open in Surrealist" action
+- Highlighting SurrealQL embedded in JavaScript/TypeScript host files
 
 ## Parity scope
 
