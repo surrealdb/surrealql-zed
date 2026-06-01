@@ -10,7 +10,7 @@ snippets = ['./snippets/surql-snippets.json']
 
 [grammars.surrealql]
 repository = 'https://github.com/surrealdb/surrealql-tree-sitter'
-rev = 'c8c48ab6e8318fc4c9db77fe2e12aa330b65a223'
+rev = '9e0c066be40d87514552ccdb050d86ab8073bab0'
 
 [language_servers.surrealql-lsp]
 name = 'SurrealQL Language Server'
