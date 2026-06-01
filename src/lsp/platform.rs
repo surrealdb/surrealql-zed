@@ -10,10 +10,7 @@ use crate::config::BINARY_NAME;
 ///
 /// No native x86_64 macOS build is published; fall back to the arm64 binary
 /// (Rosetta 2 is required on Intel Macs).
-pub fn release_asset_name(
-    platform: zed::Os,
-    arch: zed::Architecture,
-) -> Result<String, String> {
+pub fn release_asset_name(platform: zed::Os, arch: zed::Architecture) -> Result<String, String> {
     let asset_name = match (platform, arch) {
         (zed::Os::Mac, zed::Architecture::Aarch64) => format!("{BINARY_NAME}-macos-arm64"),
         (zed::Os::Mac, zed::Architecture::X8664) => format!("{BINARY_NAME}-macos-arm64"),

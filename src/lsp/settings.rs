@@ -1,5 +1,5 @@
-use zed_extension_api::settings::LspSettings;
 use zed_extension_api::Worktree;
+use zed_extension_api::settings::LspSettings;
 
 use crate::config::SERVER_ID;
 

@@ -49,7 +49,7 @@ pub fn resolve_initialization_options(worktree: &Worktree) -> Value {
         .and_then(|s| s.initialization_options);
 
     let mut options = default_initialization_options();
-	
+
     if let Some(user_options) = user_options {
         merge(&mut options, user_options);
     }
