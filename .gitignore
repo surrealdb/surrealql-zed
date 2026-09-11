@@ -2,3 +2,6 @@ grammars
 target
 *.wasm
 .claude/
+
+# Grammar checkout produced by scripts/fetch-grammar.sh
+/grammar/

@@ -1,0 +1,43 @@
+# Capture counts per query file, produced by scripts/check-queries.py over
+# test/fixtures/highlight-sample.surql against the grammar revision pinned in
+# extension.toml.
+#
+# Regenerate with scripts/update-query-baseline.sh and commit the diff. A
+# change here should always be explained by a grammar repin or a query edit;
+# an unexplained one is the regression this file exists to catch.
+#
+# <query file> <capture name> <count>
+brackets.scm close 20
+brackets.scm open 20
+folds.scm fold 6
+highlights.scm boolean 3
+highlights.scm comment 10
+highlights.scm comment.block 1
+highlights.scm constant 2
+highlights.scm constant.builtin 6
+highlights.scm embedded 1
+highlights.scm function 11
+highlights.scm keyword 125
+highlights.scm keyword.function 1
+highlights.scm number 22
+highlights.scm number.float 4
+highlights.scm operator 29
+highlights.scm property 10
+highlights.scm punctuation.bracket 22
+highlights.scm punctuation.delimiter 38
+highlights.scm punctuation.special 5
+highlights.scm string 7
+highlights.scm string.regex 1
+highlights.scm string.special 1
+highlights.scm type 28
+highlights.scm variable 82
+indents.scm end 6
+indents.scm indent 6
+injections.scm injection.content 1
+outline.scm context 32
+outline.scm item 16
+outline.scm name 16
+overrides.scm comment 10
+overrides.scm comment.block 1
+overrides.scm comment.inclusive 10
+overrides.scm string 9
