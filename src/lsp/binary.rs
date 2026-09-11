@@ -1,6 +1,6 @@
 use zed_extension_api::{self as zed, LanguageServerId, Result, Worktree};
 
-use crate::config::{BINARY_NAME, GITHUB_REPO, pinned_lsp_version};
+use crate::config::{BINARY_NAME, GITHUB_REPO, pinned_lsp_version, source_build_hint};
 use crate::lsp::platform::{cached_binary_suffix, release_asset_name};
 
 /// `settings.version` value that opts out of the pinned release and tracks the
@@ -73,6 +73,8 @@ impl BinaryResolver {
         };
 
         let (platform, arch) = zed::current_platform();
+        // Already carries its own hint: the releases link `install_hint` adds
+        // is a dead end when no asset exists for this target at all.
         let asset_name = release_asset_name(platform, arch)?;
 
         let bin_suffix = cached_binary_suffix(platform);
@@ -85,7 +87,9 @@ impl BinaryResolver {
                 .assets
                 .iter()
                 .find(|a| a.name == asset_name)
-                .ok_or_else(|| format!("no release asset found; expected: {asset_name}"))?;
+                .ok_or_else(|| {
+                    install_hint(format!("no release asset found; expected: {asset_name}"))
+                })?;
 
             zed::set_language_server_installation_status(
                 language_server_id,
@@ -109,15 +113,12 @@ impl BinaryResolver {
     }
 }
 
-/// `cargo install --git` cannot build this server: its `build.rs` compiles the
-/// tree-sitter grammar from a sibling `surrealql-tree-sitter` checkout, which a
-/// bare git install does not provide. Point at the prebuilt binaries instead,
-/// and at the setup the server's own README documents for source builds.
+/// Every failure to obtain a binary ends up here, so the user gets a route
+/// forward rather than just a reason it did not work.
 fn install_hint(reason: String) -> String {
     format!(
         "{reason}. Download a binary from https://github.com/{GITHUB_REPO}/releases and set \
-        `lsp.surrealql-lsp.binary.path` to it, or build from source: clone {GITHUB_REPO}, run \
-        `bash scripts/setup-grammar.sh` (or set TREE_SITTER_SURREALQL_DIR to an existing \
-        surrealql-tree-sitter checkout), then `cargo install --path .`"
+        `lsp.surrealql-lsp.binary.path` to it, or build from source: {}",
+        source_build_hint()
     )
 }
