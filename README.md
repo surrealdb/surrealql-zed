@@ -2,7 +2,7 @@
 
 [SurrealQL](https://surrealdb.com/docs/surrealql) language support for the [Zed](https://zed.dev) editor.
 
-This extension targets parity with [`@surrealdb/lezer`](https://github.com/surrealdb/codemirror/tree/main/packages/lezer-surrealql) and [`@surrealdb/codemirror`](https://github.com/surrealdb/codemirror/tree/main/packages/codemirror-surrealql) for syntax highlighting and editor ergonomics. The tree-sitter grammar is pinned to the lezer-aligned [`tree-sitter-parity`](https://github.com/surrealdb/surrealql-tree-sitter/tree/tree-sitter-parity) branch of [`surrealdb/surrealql-tree-sitter`](https://github.com/surrealdb/surrealql-tree-sitter).
+This extension targets parity with [`@surrealdb/lezer`](https://github.com/surrealdb/codemirror/tree/main/packages/lezer-surrealql) and [`@surrealdb/codemirror`](https://github.com/surrealdb/codemirror/tree/main/packages/codemirror-surrealql) for syntax highlighting and editor ergonomics. The tree-sitter grammar is pinned to a commit on the `master` branch of [`surrealdb/surrealql-tree-sitter`](https://github.com/surrealdb/surrealql-tree-sitter), which carries the lezer-aligned PascalCase node names.
 
 ## Features
 
@@ -38,17 +38,28 @@ DEFINE FUNCTION fn::greet($name: string) {
 
 ## Language server
 
-The extension downloads the latest pre-release of [`surrealql-language-server`](https://github.com/surrealdb/surrealql-language-server) from GitHub when no local binary is found (`cargo install --git …` also works).
+The extension downloads the [`surrealql-language-server`](https://github.com/surrealdb/surrealql-language-server)
+release it is pinned to (see `.lsp-version`) from GitHub when no local binary is found. Pin a
+different tag or track the newest release with `settings.version` — see
+[Binary path and version](#binary-path-and-version).
+
+`cargo install --git …` does **not** work for this server: its `build.rs` compiles the tree-sitter
+grammar from a sibling `surrealql-tree-sitter` checkout that a bare git install does not provide.
+To build from source, clone the repo and run `bash scripts/setup-grammar.sh` (or set
+`TREE_SITTER_SURREALQL_DIR` to an existing checkout) before `cargo install --path .`.
 
 Supported platforms:
 
 | Platform | Asset |
 |----------|-------|
 | macOS arm64 | `surrealql-language-server-macos-arm64` |
-| macOS x86_64 | `surrealql-language-server-macos-arm64` (Rosetta 2) |
 | Linux amd64 | `surrealql-language-server-linux-amd64` |
 | Linux arm64 | `surrealql-language-server-linux-arm64` |
 | Windows amd64 | `surrealql-language-server-windows-amd64.exe` |
+
+No x86_64 macOS binary is published. Rosetta 2 translates x86_64 to arm64 and not the reverse, so
+Intel Macs report an unsupported platform instead of downloading an asset that cannot run; build
+from source or set `binary.path` to run the server there.
 
 ## Configuration
 
@@ -89,8 +100,7 @@ inference mode `both`); anything you set here is merged on top, leaf by leaf:
 
 ### Binary path and version
 
-Override the binary or pin a release instead of using the auto-downloaded latest
-pre-release:
+Override the binary, or track a different release than the pinned default:
 
 ```json
 {
@@ -101,7 +111,7 @@ pre-release:
         "arguments": []
       },
       "settings": {
-        "version": "v0.1.0"
+        "version": "v0.6.0"
       }
     }
   }
@@ -109,9 +119,12 @@ pre-release:
 ```
 
 - `binary.path` takes precedence over PATH detection and download.
-- `settings.version` pins a GitHub release tag; omit it or use `"latest"` for the
-  newest pre-release. When unset, a `surrealql-language-server` binary on your
-  `PATH` (e.g. from `cargo install`) is preferred.
+- `settings.version` pins a GitHub release tag. Omit it to use the version this
+  extension is built against (`.lsp-version`), or set `"latest"` to track the
+  newest published release.
+- When `settings.version` is unset, a `surrealql-language-server` binary already on
+  your `PATH` is preferred over any download. Setting it to any value — including
+  `"latest"` — opts out of that and always resolves through GitHub.
 
 ### Enabling, disabling, and ordering the language server
 
@@ -190,12 +203,12 @@ After changing extension files, tree-sitter queries, or the pinned grammar revis
 
 ### Grammar
 
-The tree-sitter grammar is fetched from [`surrealdb/surrealql-tree-sitter`](https://github.com/surrealdb/surrealql-tree-sitter) at the revision pinned in `extension.toml` (`rev` field). The current pin targets the [`tree-sitter-parity`](https://github.com/surrealdb/surrealql-tree-sitter/tree/tree-sitter-parity) branch, which includes the lezer-aligned PascalCase node names used by the query files in `languages/surql/`.
+The tree-sitter grammar is fetched from [`surrealdb/surrealql-tree-sitter`](https://github.com/surrealdb/surrealql-tree-sitter) at the revision pinned in `extension.toml` (`rev` field). Pin a commit that is reachable from `master`: Zed fetches grammars with `git fetch --depth 1 origin <rev>`, so a revision that only exists on a feature branch breaks every new install once that branch is deleted.
 
 To bump the grammar:
 
 1. Push your grammar change to `surrealql-tree-sitter` (run `bun run gen` there first so `src/parser.c` is committed).
-2. Update `rev` in `extension.toml` to the new commit SHA.
+2. Update `rev` in `extension.toml` to the new commit SHA on `master`.
 3. Clear the cached grammar and reinstall the dev extension.
 
 For unpublished grammar work, you can point at a local checkout instead:
@@ -216,7 +229,12 @@ Then run `zed: install dev extension` again.
 
 ### Language server (diagnostics)
 
-Syntax diagnostics come from `surrealql-language-server`. The extension prefers a binary on your `PATH` (for example from `cargo install --path ../surrealql-language-server --force`) and otherwise downloads the latest GitHub pre-release.
+Syntax diagnostics come from `surrealql-language-server`. The extension prefers a binary on your
+`PATH` and otherwise downloads the release pinned in `.lsp-version`.
+
+Building the server from source requires a sibling `surrealql-tree-sitter` checkout — its `build.rs`
+compiles the grammar — so run `bash scripts/setup-grammar.sh` in the server repo (or export
+`TREE_SITTER_SURREALQL_DIR`) before `cargo install --path ../surrealql-language-server --force`.
 
 To test grammar fixes such as prefix `!` in `WHERE` clauses before a new LSP release is published:
 
