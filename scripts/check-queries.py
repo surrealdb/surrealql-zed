@@ -50,41 +50,53 @@ HEADER = """\
 """
 
 
-def run(args):
-    result = subprocess.run(args, capture_output=True, text=True)
-    if result.returncode != 0:
-        return None, result.stderr.strip()
-    return result.stdout, None
+def resolve_grammar(raw):
+    """Validate the caller's grammar directory before it reaches a subprocess.
+
+    Everything below shells out to `tree-sitter -p <grammar>`, so this is the
+    one place untrusted input enters. Resolve it, require a real directory that
+    actually holds a tree-sitter grammar, and pass the resolved path onward.
+    """
+    grammar = pathlib.Path(raw).resolve()
+    if not grammar.is_dir():
+        raise SystemExit(f"{raw}: not a directory")
+    if not (grammar / "grammar.js").is_file():
+        raise SystemExit(f"{raw}: no grammar.js, is this a tree-sitter grammar?")
+    return grammar
+
+
+def tree_sitter(command, grammar, *args):
+    """Run a tree-sitter subcommand. Never uses a shell."""
+    return subprocess.run(
+        ["tree-sitter", command, "-p", str(grammar), *args],
+        capture_output=True,
+        text=True,
+        shell=False,
+    )
 
 
 def parse_errors(grammar):
     """Count ERROR and MISSING nodes in the fixture's parse tree."""
-    stdout, err = run(["tree-sitter", "parse", "-p", str(grammar), str(FIXTURE)])
-    if stdout is None:
-        # `tree-sitter parse` exits non-zero when the tree has errors, and
-        # still prints the tree, so fall back to the combined output.
-        result = subprocess.run(
-            ["tree-sitter", "parse", "-p", str(grammar), str(FIXTURE)],
-            capture_output=True,
-            text=True,
-        )
-        stdout = result.stdout + result.stderr
-    return len(re.findall(r"\b(?:ERROR|MISSING)\b", stdout))
+    # `tree-sitter parse` exits non-zero when the tree has errors and still
+    # prints the tree, so read both streams rather than branching on the code.
+    result = tree_sitter("parse", grammar, str(FIXTURE))
+    return len(re.findall(r"\b(?:ERROR|MISSING)\b", result.stdout + result.stderr))
 
 
 def collect(grammar):
     """Map each query file to its capture-name counts."""
     counts = {}
     for query in sorted(QUERY_DIR.glob("*.scm")):
-        stdout, err = run(
-            ["tree-sitter", "query", "-p", str(grammar), str(query), str(FIXTURE)]
-        )
-        if stdout is None:
-            print(f"::error file={query.relative_to(ROOT)}::does not compile: {err}")
+        result = tree_sitter("query", grammar, str(query), str(FIXTURE))
+        if result.returncode != 0:
+            print(
+                f"::error file={query.relative_to(ROOT)}::does not compile: "
+                f"{result.stderr.strip()}"
+            )
             return None
         captures = Counter(
             match.group(1)
-            for line in stdout.splitlines()
+            for line in result.stdout.splitlines()
             if (match := CAPTURE_RE.match(line))
         )
         counts[query.name] = captures
@@ -112,12 +124,13 @@ def load_baseline():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("grammar", type=pathlib.Path)
+    parser.add_argument("grammar")
     parser.add_argument("--update", action="store_true")
     args = parser.parse_args()
 
-    errors = parse_errors(args.grammar)
-    counts = collect(args.grammar)
+    grammar = resolve_grammar(args.grammar)
+    errors = parse_errors(grammar)
+    counts = collect(grammar)
     if counts is None:
         return 1
 
