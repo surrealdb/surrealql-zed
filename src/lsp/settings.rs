@@ -15,7 +15,8 @@ impl LspCommandConfig {
         let lsp_settings = LspSettings::for_worktree(SERVER_ID, worktree).ok();
 
         // Optional version pin (`lsp.surrealql-lsp.settings.version`) mirrors the
-        // VS Code `surrealql.lsp.version` setting. Empty or "latest" means newest.
+        // VS Code `surrealql.lsp.version` setting. Unset or empty falls back to
+        // the release this extension is pinned to; "latest" tracks the newest.
         let version = lsp_settings
             .as_ref()
             .and_then(|s| s.settings.as_ref())

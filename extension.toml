@@ -1,6 +1,6 @@
 id = 'surrealdb-surrealql'
 name = 'SurrealQL'
-version = '0.3.0'
+version = '0.4.0'
 schema_version = 1
 description = 'SurrealQL language support aligned with @surrealdb/lezer and @surrealdb/codemirror'
 authors = ['SurrealDB <info@surrealdb.com>']
@@ -10,7 +10,7 @@ snippets = ['./snippets/surql-snippets.json']
 
 [grammars.surrealql]
 repository = 'https://github.com/surrealdb/surrealql-tree-sitter'
-rev = '9e0c066be40d87514552ccdb050d86ab8073bab0'
+rev = '22feaab95659bb5b491a30b89aa9251613135342'
 
 [language_servers.surrealql-lsp]
 name = 'SurrealQL Language Server'
