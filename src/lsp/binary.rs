@@ -1,7 +1,11 @@
 use zed_extension_api::{self as zed, LanguageServerId, Result, Worktree};
 
-use crate::config::{BINARY_NAME, GITHUB_REPO};
+use crate::config::{BINARY_NAME, GITHUB_REPO, pinned_lsp_version};
 use crate::lsp::platform::{cached_binary_suffix, release_asset_name};
+
+/// `settings.version` value that opts out of the pinned release and tracks the
+/// newest published one instead.
+const LATEST: &str = "latest";
 
 pub struct BinaryResolver {
     cached_binary_path: Option<String>,
@@ -20,19 +24,21 @@ impl BinaryResolver {
         worktree: &Worktree,
         version: Option<&str>,
     ) -> Result<String> {
-        let pinned = version.filter(|v| !v.is_empty() && *v != "latest");
+        // Only an explicit `settings.version` counts as user intent; an unset or
+        // empty value leaves us free to prefer whatever is already installed.
+        let requested = version.map(str::trim).filter(|v| !v.is_empty());
 
-        if pinned.is_none() {
+        if requested.is_none() {
             // Prefer a locally installed binary (dev/manual installs via cargo install)
             if let Some(path) = worktree.which(BINARY_NAME) {
                 return Ok(path);
             }
 
             // Return the cached path if the file still exists
-            if let Some(cached) = &self.cached_binary_path {
-                if std::fs::metadata(cached).is_ok_and(|m| m.is_file()) {
-                    return Ok(cached.clone());
-                }
+            if let Some(cached) = &self.cached_binary_path
+                && std::fs::metadata(cached).is_ok_and(|m| m.is_file())
+            {
+                return Ok(cached.clone());
             }
         }
 
@@ -41,22 +47,29 @@ impl BinaryResolver {
             &zed::LanguageServerInstallationStatus::CheckingForUpdate,
         );
 
-        let release = match pinned {
-            Some(tag) => zed::github_release_by_tag_name(GITHUB_REPO, tag)
-                .map_err(|_| format!("no release found for {GITHUB_REPO} with tag {tag}"))?,
-            None => zed::latest_github_release(
+        let release = match requested {
+            // `latest` tracks the newest published release. `pre_release` is an
+            // exact-equality filter in Zed, not "also include pre-releases", so
+            // `false` here means "the newest non-prerelease".
+            Some(LATEST) => zed::latest_github_release(
                 GITHUB_REPO,
                 zed::GithubReleaseOptions {
                     require_assets: true,
-                    pre_release: true,
+                    pre_release: false,
                 },
             )
-            .map_err(|_| {
-                format!(
-                    "no release found for {BINARY_NAME}. \
-                    Install it manually with: cargo install --git https://github.com/{GITHUB_REPO}"
-                )
-            })?,
+            .map_err(|_| install_hint(format!("no release found for {BINARY_NAME}")))?,
+
+            // An explicit tag, or otherwise the release this extension is pinned to.
+            other => {
+                let tag = match other {
+                    Some(tag) => tag,
+                    None => pinned_lsp_version(),
+                };
+                zed::github_release_by_tag_name(GITHUB_REPO, tag).map_err(|_| {
+                    install_hint(format!("no release found for {GITHUB_REPO} with tag {tag}"))
+                })?
+            }
         };
 
         let (platform, arch) = zed::current_platform();
@@ -94,4 +107,17 @@ impl BinaryResolver {
         self.cached_binary_path = Some(binary_path.clone());
         Ok(binary_path)
     }
+}
+
+/// `cargo install --git` cannot build this server: its `build.rs` compiles the
+/// tree-sitter grammar from a sibling `surrealql-tree-sitter` checkout, which a
+/// bare git install does not provide. Point at the prebuilt binaries instead,
+/// and at the setup the server's own README documents for source builds.
+fn install_hint(reason: String) -> String {
+    format!(
+        "{reason}. Download a binary from https://github.com/{GITHUB_REPO}/releases and set \
+        `lsp.surrealql-lsp.binary.path` to it, or build from source: clone {GITHUB_REPO}, run \
+        `bash scripts/setup-grammar.sh` (or set TREE_SITTER_SURREALQL_DIR to an existing \
+        surrealql-tree-sitter checkout), then `cargo install --path .`"
+    )
 }
