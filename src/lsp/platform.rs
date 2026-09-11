@@ -8,12 +8,12 @@ use crate::config::BINARY_NAME;
 ///   surrealql-language-server-linux-arm64
 ///   surrealql-language-server-windows-amd64.exe
 ///
-/// No native x86_64 macOS build is published; fall back to the arm64 binary
-/// (Rosetta 2 is required on Intel Macs).
+/// No x86_64 macOS build is published. Rosetta 2 translates x86_64 to arm64,
+/// not the reverse, so the arm64 asset cannot run on an Intel Mac: those fall
+/// through to the unsupported-platform error rather than a broken download.
 pub fn release_asset_name(platform: zed::Os, arch: zed::Architecture) -> Result<String, String> {
     let asset_name = match (platform, arch) {
         (zed::Os::Mac, zed::Architecture::Aarch64) => format!("{BINARY_NAME}-macos-arm64"),
-        (zed::Os::Mac, zed::Architecture::X8664) => format!("{BINARY_NAME}-macos-arm64"),
         (zed::Os::Linux, zed::Architecture::X8664) => format!("{BINARY_NAME}-linux-amd64"),
         (zed::Os::Linux, zed::Architecture::Aarch64) => format!("{BINARY_NAME}-linux-arm64"),
         (zed::Os::Windows, zed::Architecture::X8664) => {
