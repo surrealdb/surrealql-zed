@@ -1,0 +1,137 @@
+# Guards the checks that a Zed extensions submission runs against us, so a
+# broken manifest or an unfetchable grammar pin fails here rather than in
+# zed-industries/extensions' `package` job.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          # Matches the toolchain zed-industries/extensions packages with.
+          toolchain: '1.90'
+          target: wasm32-wasip2
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --release --target wasm32-wasip2
+
+  manifests:
+    name: Validate manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Parse extension.toml, language config, and snippets
+        run: |
+          python3 - <<'PY'
+          import json, sys, tomllib
+
+          failed = False
+
+          for path in ('extension.toml', 'Cargo.toml', 'languages/surql/config.toml'):
+              try:
+                  tomllib.load(open(path, 'rb'))
+                  print(f'ok   {path}')
+              except Exception as err:
+                  print(f'::error file={path}::{err}')
+                  failed = True
+
+          try:
+              snippets = json.load(open('snippets/surql-snippets.json'))
+              print(f'ok   snippets/surql-snippets.json ({len(snippets)} entries)')
+          except Exception as err:
+              print(f'::error file=snippets/surql-snippets.json::{err}')
+              failed = True
+
+          extension_version = tomllib.load(open('extension.toml', 'rb'))['version']
+          cargo_version = tomllib.load(open('Cargo.toml', 'rb'))['package']['version']
+          if extension_version != cargo_version:
+              print(
+                  f'::error file=Cargo.toml::version {cargo_version} does not match '
+                  f'extension.toml {extension_version}'
+              )
+              failed = True
+
+          sys.exit(1 if failed else 0)
+          PY
+
+  queries:
+    name: Validate queries against the pinned grammar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Read the pinned grammar revision
+        id: grammar
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          grammar = tomllib.load(open('extension.toml', 'rb'))['grammars']['surrealql']
+          print(f"repository={grammar['repository']}")
+          print(f"rev={grammar['rev']}")
+          PY
+
+      # Zed fetches grammars with `git fetch --depth 1 origin <rev>`, so this
+      # step also proves the pinned revision is still reachable from the remote.
+      # A rev that only exists on a since-deleted branch fails here.
+      - name: Fetch the grammar at the pinned revision
+        env:
+          GRAMMAR_REPOSITORY: ${{ steps.grammar.outputs.repository }}
+          GRAMMAR_REV: ${{ steps.grammar.outputs.rev }}
+        run: |
+          mkdir -p grammar
+          cd grammar
+          git init --quiet
+          git remote add origin "$GRAMMAR_REPOSITORY"
+          git fetch --quiet --depth 1 origin "$GRAMMAR_REV"
+          git checkout --quiet "$GRAMMAR_REV"
+
+      - name: Install tree-sitter CLI
+        env:
+          # Matches the `tree-sitter-cli` the grammar repo generates with.
+          TREE_SITTER_VERSION: v0.26.8
+        run: |
+          curl -fsSL \
+            "https://github.com/tree-sitter/tree-sitter/releases/download/$TREE_SITTER_VERSION/tree-sitter-linux-x64.gz" \
+            | gunzip > "$RUNNER_TEMP/tree-sitter"
+          chmod +x "$RUNNER_TEMP/tree-sitter"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Run every query file against the grammar
+        run: |
+          cat > sample.surql <<'SURQL'
+          DEFINE TABLE person SCHEMAFULL;
+          DEFINE FUNCTION fn::greet($name: string) {
+              return function($name) { return `Hello, ${arguments[0]}!`; };
+          };
+          SELECT * FROM person WHERE age > 18;
+          SURQL
+          status=0
+          for query in languages/surql/*.scm; do
+            if tree-sitter query --quiet -p "$PWD/grammar" "$query" sample.surql; then
+              echo "ok   $query"
+            else
+              echo "::error file=$query::does not compile against the pinned grammar"
+              status=1
+            fi
+          done
+          exit $status
