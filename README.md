@@ -247,12 +247,30 @@ Ensure `~/.cargo/bin` (or wherever the binary lands) is on the PATH Zed inherits
 
 ### Validating queries
 
-With a checkout of `surrealql-tree-sitter` on the pinned revision:
+`languages/surql/*.scm` are checked against the grammar revision pinned in
+`extension.toml` by capture count, not just by whether they compile — a query that
+compiles but matches nothing is the failure worth catching.
 
 ```sh
-cd ../surrealql-tree-sitter
-./node_modules/.bin/tree-sitter query -p . ../surrealql-zed/languages/surql/highlights.scm ../surrealql-zed/test.surql
+scripts/fetch-grammar.sh grammar
+scripts/check-queries.py grammar
 ```
+
+Both run in CI. The expected counts live in `test/fixtures/query-baseline.txt`,
+produced over `test/fixtures/highlight-sample.surql`, which is also asserted to
+parse with no `ERROR` or `MISSING` nodes.
+
+After editing a query, extending the fixture, or repinning the grammar,
+regenerate the baseline and commit the diff:
+
+```sh
+scripts/update-query-baseline.sh
+```
+
+This needs the `tree-sitter` CLI on your `PATH` at the version the grammar repo
+generates with (`npm i -g tree-sitter-cli@0.26.8`). A baseline change should
+always be explained by one of those three edits; an unexplained one is the
+regression the check exists to surface.
 
 ## License
 

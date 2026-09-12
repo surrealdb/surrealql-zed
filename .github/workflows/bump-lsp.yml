@@ -6,6 +6,15 @@
 # after all four release binaries are attached. The workflow_dispatch
 # trigger exists for backfills and recovery.
 #
+# The pin is compiled into the extension (src/config.rs include_str!s
+# .lsp-version), so bumping it changes shipped behaviour and needs a version
+# bump to reach anyone. The workflow bumps extension.toml and Cargo.toml in the
+# same pull request; publishing that version to zed-industries/extensions is
+# still a manual step, because this extension is not listed there yet.
+#
+# Only patch bumps are automated. Whether a change is a minor or a major is a
+# judgement call about what moved, so those stay hand-written.
+#
 # The pull request is created with a GitHub App token, not GITHUB_TOKEN:
 # a pull request created by GITHUB_TOKEN does not start CI, so the bump
 # would sit unverified.
@@ -43,7 +52,7 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Write the pin
+      - name: Write the pin and bump the extension version
         id: pin
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -52,9 +61,46 @@ jobs:
           if git diff --quiet -- .lsp-version; then
             echo "The pin is already $TAG. Nothing to do."
             echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+          # The pin ships inside the wasm, so a bump is a release. CI asserts
+          # extension.toml and Cargo.toml carry the same version, so move both.
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          import sys
+
+          def substitute(path, pattern, replacement):
+              """Rewrite one version in place, refusing to write a no-op.
+
+              str.replace and re.sub both return the input unchanged when the
+              pattern misses, so without this a rename upstream would leave a
+              stale file behind and the bump would look like it worked.
+              """
+              text = open(path).read()
+              swapped, count = re.subn(pattern, replacement, text, count=1, flags=re.M)
+              if count != 1:
+                  sys.exit(f'{path}: found no version {current} to bump')
+              open(path, 'w').write(swapped)
+
+          current = re.search(
+              r"^version = '([^']+)'", open('extension.toml').read(), re.M
+          ).group(1)
+          major, minor, patch = (int(part) for part in current.split('.'))
+          bumped = f'{major}.{minor}.{patch + 1}'
+
+          for path in ('extension.toml', 'Cargo.toml'):
+              substitute(path, rf"^version = '{re.escape(current)}'", f"version = '{bumped}'")
+
+          substitute(
+              'Cargo.lock',
+              rf'^(name = "surrealdb-surrealql"\nversion = )"{re.escape(current)}"',
+              rf'\g<1>"{bumped}"',
+          )
+
+          print(f'version={bumped}')
+          PY
 
       - name: Mint an installation token
         if: steps.pin.outputs.changed == 'true'
@@ -74,7 +120,12 @@ jobs:
           commit-message: 'chore: bump surrealql-language-server to ${{ steps.tag.outputs.tag }}'
           title: 'chore: bump surrealql-language-server to ${{ steps.tag.outputs.tag }}'
           body: |
-            Bumps the pinned `surrealql-language-server` version to `${{ steps.tag.outputs.tag }}`.
+            Bumps the pinned `surrealql-language-server` version to `${{ steps.tag.outputs.tag }}`
+            and the extension to `${{ steps.pin.outputs.version }}`.
+
+            The pin is compiled in, so this changes what users get and needs the
+            version bump to ship. Publishing it is still manual: open a pull
+            request against `zed-industries/extensions` once this lands.
 
             Release notes: https://github.com/surrealdb/surrealql-language-server/releases/tag/${{ steps.tag.outputs.tag }}
 

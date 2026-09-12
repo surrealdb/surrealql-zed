@@ -28,11 +28,14 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      # --locked so a Cargo.lock that does not match Cargo.toml fails here.
+      # Without it cargo silently regenerates the lock in the runner, and a
+      # stale committed one — the bump workflow writes it — passes unnoticed.
       - name: Clippy
-        run: cargo clippy --target wasm32-wasip2 --all-targets -- -D warnings
+        run: cargo clippy --locked --target wasm32-wasip2 --all-targets -- -D warnings
 
       - name: Build
-        run: cargo build --release --target wasm32-wasip2
+        run: cargo build --locked --release --target wasm32-wasip2
 
   manifests:
     name: Validate manifests
@@ -80,30 +83,8 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Read the pinned grammar revision
-        id: grammar
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import tomllib
-          grammar = tomllib.load(open('extension.toml', 'rb'))['grammars']['surrealql']
-          print(f"repository={grammar['repository']}")
-          print(f"rev={grammar['rev']}")
-          PY
-
-      # Zed fetches grammars with `git fetch --depth 1 origin <rev>`, so this
-      # step also proves the pinned revision is still reachable from the remote.
-      # A rev that only exists on a since-deleted branch fails here.
       - name: Fetch the grammar at the pinned revision
-        env:
-          GRAMMAR_REPOSITORY: ${{ steps.grammar.outputs.repository }}
-          GRAMMAR_REV: ${{ steps.grammar.outputs.rev }}
-        run: |
-          mkdir -p grammar
-          cd grammar
-          git init --quiet
-          git remote add origin "$GRAMMAR_REPOSITORY"
-          git fetch --quiet --depth 1 origin "$GRAMMAR_REV"
-          git checkout --quiet "$GRAMMAR_REV"
+        run: scripts/fetch-grammar.sh grammar
 
       - name: Install tree-sitter CLI
         env:
@@ -116,22 +97,9 @@ jobs:
           chmod +x "$RUNNER_TEMP/tree-sitter"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
-      - name: Run every query file against the grammar
-        run: |
-          cat > sample.surql <<'SURQL'
-          DEFINE TABLE person SCHEMAFULL;
-          DEFINE FUNCTION fn::greet($name: string) {
-              return function($name) { return `Hello, ${arguments[0]}!`; };
-          };
-          SELECT * FROM person WHERE age > 18;
-          SURQL
-          status=0
-          for query in languages/surql/*.scm; do
-            if tree-sitter query --quiet -p "$PWD/grammar" "$query" sample.surql; then
-              echo "ok   $query"
-            else
-              echo "::error file=$query::does not compile against the pinned grammar"
-              status=1
-            fi
-          done
-          exit $status
+      # `tree-sitter query --quiet` only proved that a query compiles, and a
+      # query that compiles but matches nothing compiles just as happily. This
+      # compares the captures each query actually produces against a committed
+      # baseline, and fails the fixture parsing with any ERROR or MISSING node.
+      - name: Check query captures against the baseline
+        run: scripts/check-queries.py grammar
