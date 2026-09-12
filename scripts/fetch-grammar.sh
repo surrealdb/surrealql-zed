@@ -34,6 +34,24 @@ PY
 )"
 read -r repository rev <<<"$pin"
 
+# This script does `rm -rf "$dest"`, and `${1:?}` above only catches empty or
+# unset. `fetch-grammar.sh .` from the repo root would delete the working tree,
+# and `fetch-grammar.sh ~` is worse — both are a plausible typo, since the
+# README teaches passing this path by hand. So accept only a path that does not
+# exist yet, or one that is already a grammar checkout this script made.
+if [ -e "$dest" ]; then
+	if [ ! -d "$dest" ]; then
+		echo "refusing to replace $dest: not a directory" >&2
+		exit 1
+	fi
+	if [ ! -e "$dest/.git" ] || [ ! -e "$dest/grammar.js" ]; then
+		echo "refusing to delete $dest: it does not look like a grammar" \
+			"checkout (expected both .git and grammar.js in it)." >&2
+		echo "Pass a path that does not exist yet." >&2
+		exit 1
+	fi
+fi
+
 rm -rf "$dest"
 mkdir -p "$dest"
 git -C "$dest" init --quiet

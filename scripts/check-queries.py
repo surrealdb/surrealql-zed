@@ -11,8 +11,12 @@ Counts are per capture name, not per file: a file total can hold steady
 while `@keyword` quietly becomes `@variable`, and that is exactly the
 regression worth catching.
 
-Also asserts the fixture parses with no ERROR or MISSING nodes, which turns
-a grammar pin that cannot parse ordinary SurrealQL into a red build.
+Two things are checked beyond the counts:
+
+- the fixture parses with no ERROR or MISSING node, so a grammar pin that
+  cannot parse ordinary SurrealQL is a red build;
+- every `@name` a query file declares appears in the baseline, so a capture
+  added later that matches nothing is reported rather than silently absent.
 
     scripts/check-queries.py <grammar-dir>
     scripts/check-queries.py <grammar-dir> --update
@@ -29,6 +33,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 QUERY_DIR = ROOT / "languages" / "surql"
 FIXTURE = ROOT / "test" / "fixtures" / "highlight-sample.surql"
 BASELINE = ROOT / "test" / "fixtures" / "query-baseline.txt"
+
+TREE_SITTER_HINT = (
+    "tree-sitter not found on PATH. Install the version the grammar repo "
+    "generates with: npm i -g tree-sitter-cli@0.26.8"
+)
 
 # tree-sitter prints two shapes, and dropping the second silently undercounts
 # every capture that spans more than one line:
@@ -51,11 +60,13 @@ HEADER = """\
 
 
 def resolve_grammar(raw):
-    """Validate the caller's grammar directory before it reaches a subprocess.
+    """Resolve the grammar directory, with a clear message when it is wrong.
 
-    Everything below shells out to `tree-sitter -p <grammar>`, so this is the
-    one place untrusted input enters. Resolve it, require a real directory that
-    actually holds a tree-sitter grammar, and pass the resolved path onward.
+    This is not a security boundary. Every call below passes a list argv with
+    shell=False, so nothing here is injectable, and in CI the path is the
+    checkout this repo's own workflow just made. It earns its place by turning
+    a wrong path into one sentence instead of seven identical tree-sitter
+    failures.
     """
     grammar = pathlib.Path(raw).resolve()
     if not grammar.is_dir():
@@ -67,12 +78,14 @@ def resolve_grammar(raw):
 
 def tree_sitter(command, grammar, *args):
     """Run a tree-sitter subcommand. Never uses a shell."""
-    return subprocess.run(
-        ["tree-sitter", command, "-p", str(grammar), *args],
-        capture_output=True,
-        text=True,
-        shell=False,
-    )
+    try:
+        return subprocess.run(
+            ["tree-sitter", command, "-p", str(grammar), *args],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise SystemExit(TREE_SITTER_HINT)
 
 
 def parse_errors(grammar):
@@ -83,9 +96,20 @@ def parse_errors(grammar):
     return len(re.findall(r"\b(?:ERROR|MISSING)\b", result.stdout + result.stderr))
 
 
+def declared_captures(query):
+    """The `@name`s a query file declares, ignoring `;` comments."""
+    source = re.sub(r";.*", "", query.read_text())
+    return set(re.findall(r"@([A-Za-z0-9_.]+)", source))
+
+
 def collect(grammar):
-    """Map each query file to its capture-name counts."""
+    """Map each query file to its capture-name counts.
+
+    Reports every query that fails to compile before giving up, so one run
+    surfaces all of them rather than one per run.
+    """
     counts = {}
+    failed = False
     for query in sorted(QUERY_DIR.glob("*.scm")):
         result = tree_sitter("query", grammar, str(query), str(FIXTURE))
         if result.returncode != 0:
@@ -93,14 +117,28 @@ def collect(grammar):
                 f"::error file={query.relative_to(ROOT)}::does not compile: "
                 f"{result.stderr.strip()}"
             )
-            return None
-        captures = Counter(
+            failed = True
+            continue
+        counts[query.name] = Counter(
             match.group(1)
             for line in result.stdout.splitlines()
             if (match := CAPTURE_RE.match(line))
         )
-        counts[query.name] = captures
-    return counts
+    return None if failed else counts
+
+
+def unmatched_declarations(counts):
+    """Capture names a query declares that the fixture never reaches.
+
+    The baseline only stores nonzero counts, so without this a capture added
+    later that matches nothing would be absent rather than reported.
+    """
+    unmatched = {}
+    for query in sorted(QUERY_DIR.glob("*.scm")):
+        missing = declared_captures(query) - set(counts.get(query.name, ()))
+        if missing:
+            unmatched[query.name] = sorted(missing)
+    return unmatched
 
 
 def render(counts):
@@ -122,6 +160,16 @@ def load_baseline():
     return counts
 
 
+def report_unmatched(unmatched, level):
+    for name, captures in unmatched.items():
+        for capture in captures:
+            print(
+                f"::{level} file=languages/surql/{name}::@{capture} is declared "
+                f"but never matched by {FIXTURE.name}; extend the fixture or "
+                f"drop the pattern"
+            )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("grammar")
@@ -131,27 +179,41 @@ def main():
     grammar = resolve_grammar(args.grammar)
     errors = parse_errors(grammar)
     counts = collect(grammar)
-    if counts is None:
-        return 1
 
     if args.update:
+        if counts is None:
+            return 1
         BASELINE.write_text(render(counts))
         total = sum(sum(c.values()) for c in counts.values())
-        print(f"wrote {BASELINE.relative_to(ROOT)}: {total} captures, {errors} parse errors")
+        print(
+            f"wrote {BASELINE.relative_to(ROOT)}: {total} captures, "
+            f"{errors} parse errors"
+        )
         if errors:
             print(
                 "::warning::the fixture does not parse cleanly at this grammar "
                 "revision; check-queries.py will fail until that is resolved"
             )
+        report_unmatched(unmatched_declarations(counts), "warning")
         return 0
 
     failed = False
 
+    # Reported before bailing on a failed collect, so a grammar pin that cannot
+    # parse the fixture does not read as a query problem.
     if errors:
         print(
             f"::error file=extension.toml::the pinned grammar leaves {errors} "
             f"ERROR/MISSING nodes in {FIXTURE.relative_to(ROOT)}"
         )
+        failed = True
+
+    if counts is None:
+        return 1
+
+    unmatched = unmatched_declarations(counts)
+    if unmatched:
+        report_unmatched(unmatched, "error")
         failed = True
 
     expected = load_baseline()

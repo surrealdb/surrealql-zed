@@ -10,8 +10,12 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-grammar="$(mktemp -d)"
-trap 'rm -rf "$grammar"' EXIT
 
-"$root/scripts/fetch-grammar.sh" "$grammar"
-python3 "$root/scripts/check-queries.py" "$grammar" --update
+# `mktemp -d` creates the directory, and fetch-grammar.sh refuses to `rm -rf` a
+# directory that is not already a grammar checkout. Point it one level in, at a
+# path that does not exist yet.
+workdir="$(mktemp -d)"
+trap 'rm -rf "$workdir"' EXIT
+
+"$root/scripts/fetch-grammar.sh" "$workdir/grammar"
+python3 "$root/scripts/check-queries.py" "$workdir/grammar" --update

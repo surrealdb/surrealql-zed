@@ -12,6 +12,9 @@
 # same pull request; publishing that version to zed-industries/extensions is
 # still a manual step, because this extension is not listed there yet.
 #
+# Only patch bumps are automated. Whether a change is a minor or a major is a
+# judgement call about what moved, so those stay hand-written.
+#
 # The pull request is created with a GitHub App token, not GITHUB_TOKEN:
 # a pull request created by GITHUB_TOKEN does not start CI, so the bump
 # would sit unverified.
@@ -66,6 +69,20 @@ jobs:
           # extension.toml and Cargo.toml carry the same version, so move both.
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import re
+          import sys
+
+          def substitute(path, pattern, replacement):
+              """Rewrite one version in place, refusing to write a no-op.
+
+              str.replace and re.sub both return the input unchanged when the
+              pattern misses, so without this a rename upstream would leave a
+              stale file behind and the bump would look like it worked.
+              """
+              text = open(path).read()
+              swapped, count = re.subn(pattern, replacement, text, count=1, flags=re.M)
+              if count != 1:
+                  sys.exit(f'{path}: found no version {current} to bump')
+              open(path, 'w').write(swapped)
 
           current = re.search(
               r"^version = '([^']+)'", open('extension.toml').read(), re.M
@@ -74,17 +91,12 @@ jobs:
           bumped = f'{major}.{minor}.{patch + 1}'
 
           for path in ('extension.toml', 'Cargo.toml'):
-              text = open(path).read()
-              open(path, 'w').write(
-                  re.sub(rf"^version = '{re.escape(current)}'", f"version = '{bumped}'", text, count=1, flags=re.M)
-              )
+              substitute(path, rf"^version = '{re.escape(current)}'", f"version = '{bumped}'")
 
-          lock = open('Cargo.lock').read()
-          open('Cargo.lock', 'w').write(
-              lock.replace(
-                  f'name = "surrealdb-surrealql"\nversion = "{current}"',
-                  f'name = "surrealdb-surrealql"\nversion = "{bumped}"',
-              )
+          substitute(
+              'Cargo.lock',
+              rf'^(name = "surrealdb-surrealql"\nversion = )"{re.escape(current)}"',
+              rf'\g<1>"{bumped}"',
           )
 
           print(f'version={bumped}')
